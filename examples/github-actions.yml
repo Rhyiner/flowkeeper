@@ -1,0 +1,79 @@
+# .github/workflows/n8n.yml for a repository that stores n8n workflows with flowkeeper.
+#
+# Repository settings > Secrets and variables > Actions:
+#   secret   N8N_API_KEY   the n8n API key
+#   variable N8N_URL       e.g. https://n8n.example.com
+#
+# The jobs that talk to n8n run on a self-hosted runner that can reach it
+# (GitHub's hosted runners cannot see your home network). The runner needs
+# Python 3.10+ with venv (on Debian/Ubuntu: apt install python3-venv).
+
+name: n8n workflows
+
+on:
+  pull_request:
+    paths: ["workflows/**"]
+  push:
+    branches: [main]
+    paths: ["workflows/**"]
+  schedule:
+    - cron: "17 6 * * *"   # daily drift check
+  workflow_dispatch:
+
+concurrency:
+  group: n8n-deploy
+  cancel-in-progress: false
+
+env:
+  FLOWKEEPER_DIR: workflows
+  # Pin the version you tested. Replace YOUR_GITHUB_USER.
+  FLOWKEEPER_PKG: https://github.com/YOUR_GITHUB_USER/flowkeeper/archive/refs/tags/v0.1.0.tar.gz
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install "$FLOWKEEPER_PKG"
+      - run: flowkeeper validate --strict
+      - run: flowkeeper format --check
+
+  plan:
+    if: github.event_name == 'pull_request'
+    needs: validate
+    runs-on: self-hosted
+    env:
+      N8N_URL: ${{ vars.N8N_URL }}
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m venv "$RUNNER_TEMP/fk" && "$RUNNER_TEMP/fk/bin/pip" install -q "$FLOWKEEPER_PKG"
+      - run: '"$RUNNER_TEMP/fk/bin/flowkeeper" plan --diff'
+
+  deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: self-hosted
+    environment: n8n
+    env:
+      N8N_URL: ${{ vars.N8N_URL }}
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+      FLOWKEEPER_VERSION_DESCRIPTION: ${{ github.event.head_commit.message }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m venv "$RUNNER_TEMP/fk" && "$RUNNER_TEMP/fk/bin/pip" install -q "$FLOWKEEPER_PKG"
+      - run: '"$RUNNER_TEMP/fk/bin/flowkeeper" deploy'
+
+  drift:
+    if: github.event_name == 'schedule'
+    runs-on: self-hosted
+    env:
+      N8N_URL: ${{ vars.N8N_URL }}
+      N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m venv "$RUNNER_TEMP/fk" && "$RUNNER_TEMP/fk/bin/pip" install -q "$FLOWKEEPER_PKG"
+      - run: '"$RUNNER_TEMP/fk/bin/flowkeeper" plan --diff --detailed-exitcode'

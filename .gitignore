@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.env
+
+# Workflows exported while trying the tool. Keep them in your own private
+# repository, never in this one.
+/workflows/

@@ -1,0 +1,64 @@
+# .gitlab-ci.yml for a repository that stores n8n workflows with flowkeeper.
+#
+# Layout of that repository:
+#   workflows/*.json   one file per workflow (written by `flowkeeper export`)
+#   .gitlab-ci.yml     this file
+#
+# CI/CD variables to define (Settings > CI/CD > Variables):
+#   N8N_URL       e.g. https://n8n.example.com          (Protected)
+#   N8N_API_KEY   the n8n API key                        (Protected, Masked)
+#
+# The jobs that talk to n8n run on a self-hosted runner tagged "n8n-access" that
+# can reach your n8n. That runner polls GitLab: no port has to be opened.
+
+stages: [validate, plan, deploy]
+
+variables:
+  FLOWKEEPER_DIR: workflows
+  # Pin the version you tested. Replace YOUR_GITHUB_USER.
+  FLOWKEEPER_PKG: "https://github.com/YOUR_GITHUB_USER/flowkeeper/archive/refs/tags/v0.1.0.tar.gz"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+default:
+  image: python:3.13-alpine
+  before_script:
+    - pip install --quiet "$FLOWKEEPER_PKG"
+
+# Offline checks: structure, duplicates, hard-coded secrets. Runs anywhere.
+validate:
+  stage: validate
+  script:
+    - flowkeeper validate --strict
+    - flowkeeper format --check
+
+# What a merge would change in n8n, shown in the merge request pipeline.
+plan:
+  stage: plan
+  tags: [n8n-access]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - flowkeeper plan --diff
+
+# Deploy what is on the default branch. The published versions are named
+# after the commit ("git a1b2c3d4"), so n8n's history points back to Git.
+deploy:
+  stage: deploy
+  tags: [n8n-access]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+  resource_group: n8n          # never two deployments at once
+  environment:
+    name: n8n
+  script:
+    - flowkeeper deploy
+
+# Optional: a scheduled pipeline (Build > Pipeline schedules) that fails when
+# someone changed n8n without going through Git.
+drift:
+  stage: plan
+  tags: [n8n-access]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - flowkeeper plan --diff --detailed-exitcode

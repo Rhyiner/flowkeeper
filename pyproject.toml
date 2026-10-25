@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowkeeper"
+dynamic = ["version"]
+description = "GitOps for n8n: export workflows to Git, validate them, preview changes and deploy them back."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Rhyiner" }]
+keywords = ["n8n", "gitops", "workflow", "automation", "ci", "devops"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/YOUR_GITHUB_USER/flowkeeper"
+Issues = "https://github.com/YOUR_GITHUB_USER/flowkeeper/issues"
+
+[project.scripts]
+flowkeeper = "flowkeeper.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "flowkeeper.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

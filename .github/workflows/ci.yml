@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t tests -v
+      - name: Package builds and installs
+        run: |
+          pip install .
+          flowkeeper --version
+
+  e2e:
+    # Runs the whole export / plan / deploy cycle against a real n8n.
+    runs-on: ubuntu-latest
+    services:
+      n8n:
+        image: n8nio/n8n:2.44.6
+        ports: ["5678:5678"]
+        env:
+          N8N_DIAGNOSTICS_ENABLED: "false"
+          N8N_SECURE_COOKIE: "false"
+          N8N_PERSONALIZATION_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Create owner and API key
+        run: |
+          key=$(python tests/e2e/bootstrap.py http://127.0.0.1:5678)
+          echo "::add-mask::$key"
+          echo "FLOWKEEPER_E2E_API_KEY=$key" >> "$GITHUB_ENV"
+      - name: End-to-end tests
+        env:
+          FLOWKEEPER_E2E_URL: http://127.0.0.1:5678
+        run: python -m unittest discover -s tests/e2e -v
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t flowkeeper:ci .
+      - run: docker run --rm flowkeeper:ci --version
